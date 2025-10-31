@@ -217,7 +217,7 @@ def block_training(args):
     print("\nBest accuracy.")
     print(max(server.rs_test_acc))
     print("\nAverage time cost per round.")
-    print(sum(time_list.Budget[1:]) / len(time_list.Budget[1:]))
+    print(sum(time_list[1:]) / len(time_list[1:]))
 
     server.save_results()
 
@@ -296,3 +296,4 @@ if __name__ == "__main__":
         print(f"Using {torch.cuda.device_count()} GPUs")
 
     block_training(args)
+
