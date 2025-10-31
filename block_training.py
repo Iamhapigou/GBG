@@ -6,7 +6,7 @@ from SBIBD import create_blocks
 from clients.clientbase import Client
 from clients.clientavg import clientAVG
 from server.serveravg import FedAvg
-import numpy as np
+import copy
 from read_data import read_client_data
 import os
 from models.MNIST import MNIST_models
@@ -48,80 +48,88 @@ def block_training(args):
     else:
         with open(file_path_2, "r") as f:
             data = ujson.load(f)
-    print(data['C_SBIBD'])
+    print(f"C_SBIBD are {data['C_SBIBD']}")
     #Block training
     #Set up each client in SBIBD
     for i in range(len(blocks)):
-        if "MNIST" == args.dataset and i < len(blocks)/3:
+        if "MNIST" == args.dataset:
             args.model = MNIST_models.MNIST_MCLR().to(args.device)
-        elif "MNIST" == args.dataset and i > len(blocks)/3:
-            args.model = MNIST_models.MNIST_MLP().to(args.device)
-        elif "MNIST" == args.dataset:
-            args.model = MNIST_models.MNIST_MLP().to(args.device)
         elif "FEMNIST" == args.dataset and i < len(blocks)/2:
             args.model = FEMNIST_models.FEMNIST_CNN().to(args.device)
         elif "FEMNIST" == args.dataset and i >= len(blocks)/2:
-            args.model = FEMNIST_models.FEMNIST_CNN().to(args.device)
+            args.model = FEMNIST_models.FEMNIST_MLP().to(args.device)
         elif "Cifar100" == args.dataset and i < len(blocks)/2:
             args.model = Cifar100_models.CIFAR100_CNN().to(args.device)
         elif "Cifar100" == args.dataset and i > len(blocks)/2:
             args.model = Cifar100_models.CIFAR100_CNN().to(args.device)
         elif "AGNews" == args.dataset and i < len(blocks)/3:
-            args.model = AGNews_models.ResNetText().to(args.device)
+            args.model = AGNews_models.TextCNN().to(args.device)
         elif "AGNews" == args.dataset and i > len(blocks)/3:
             args.model = AGNews_models.TextCNN().to(args.device)
         elif "AGNews" == args.dataset:
-            args.model = AGNews_models.LSTMNet().to(args.device)
+            args.model = AGNews_models.TextCNN().to(args.device)
 
-        for j in data["C_SBIBD"][i]:
-            train_data = read_client_data(args.dataset, j, args, is_train=True)
-            test_data = read_client_data(args.dataset,  j, args, is_train=False)
-            clients[j] = clientAVG(args, id=j, train_samples=len(train_data), test_samples=len(test_data))
+        if data["C_SBIBD"][i] != []:
+            for j in data["C_SBIBD"][i]:
+                train_data = read_client_data(args.dataset, j, args, is_train=True)
+                test_data = read_client_data(args.dataset, j, args, is_train=False)
+                clients[j] = clientAVG(args, id=j, train_samples=len(train_data), test_samples=len(test_data))
+        else:
+            pass
 
     #Set up the clients in C_rest
-        for j in data["C_rest"][i]:
-            if "MNIST" == args.dataset:
-                args.model = MNIST_models.MNIST_MLP().to(args.device)
-            elif "FEMNIST" == args.dataset:
-                args.model = FEMNIST_models.FEMNIST_ResNet().to(args.device)
-            elif "Cifar100" == args.dataset:
-                args.model = Cifar100_models.CIFAR100_CNN().to(args.device)
-            elif "AGNews" == args.dataset:
-                args.model = AGNews_models.ResNetText().to(args.device)
+        if "MNIST" == args.dataset:
+            args.model = MNIST_models.MNIST_MCLR().to(args.device)
+        elif "FEMNIST" == args.dataset:
+            args.model = FEMNIST_models.FEMNIST_CNN().to(args.device)
+        elif "Cifar100" == args.dataset:
+            args.model = Cifar100_models.CIFAR100_CNN().to(args.device)
+        elif "AGNews" == args.dataset:
+            args.model = AGNews_models.TextCNN.to(args.device)
 
-            train_data = read_client_data(args.dataset, j, args, is_train=True)
-            test_data = read_client_data(args.dataset, j, args, is_train=False)
-            clients[j] = clientAVG(args, id=j, train_samples=len(train_data), test_samples=len(test_data))
-            c_rest.append(j)
+        if data["C_rest"][i] != []:
+            for j in data["C_rest"][i]:
+                train_data = read_client_data(args.dataset, j, args, is_train=True)
+                test_data = read_client_data(args.dataset, j, args, is_train=False)
+                clients[j] = clientAVG(args, id=j, train_samples=len(train_data), test_samples=len(test_data))
+                c_rest.append(j)
+        else:
+            pass
 
     #trainin
     server = FedAvg(args, "1")
     # first round
     print("start training")
     for j in range(len(blocks)):
-        for k in range(len(blocks[j])):
-            server.selected_clients = [clients[s] for s in server.select_clients(next=blocks[j][k])]
-            for client in server.selected_clients:
-                client.train()
-            server.receive_models()
-            server.aggregate_parameters()
+        print(blocks[j])
+        if blocks[j] != []:
+            for k in range(len(blocks[j])):
+                server.selected_clients = [clients[s] for s in server.select_clients(next=blocks[j][k])]
+                for client in server.selected_clients:
+                    client.train()
+                server.receive_models()
+                server.aggregate_parameters()
 
-            if k+1 < len(blocks[j]):
-                server.selected_clients = [clients[s] for s in server.select_clients(next=blocks[j][k+1])]
-                server.clients = server.selected_clients
-            else:
-                pass
+                if k+1 < len(blocks[j]):
+                    server.selected_clients = [clients[s] for s in server.select_clients(next=blocks[j][k+1])]
+                    server.clients = server.selected_clients
+                else:
+                    pass
 
-            server.send_models()
-        block_models.append(server.global_model)
+                server.send_models()
+            block_models.append(copy.deepcopy(server.global_model))
+        else:
+            pass
 
     #reset parameters
     for i in range(len(blocks)):
-        for j in data["C_SBIBD"][i]:
-            clients[j].loss = Distill(alpha=0.9, tem=2)
+        if data["C_SBIBD"][i] != []:
+            for j in data["C_SBIBD"][i]:
+                clients[j].loss = Distill(alpha=0.9, tem=2)
 
-        for j in data["C_rest"][i]:
-            clients[j].loss = Distill(alpha=0.9, tem=2)
+        if data["C_rest"][i] != []:
+            for j in data["C_rest"][i]:
+                clients[j].loss = Distill(alpha=0.9, tem=2)
 
     #C_rest train model
     all_clients = [clients[s] for s in server.select_clients(next=c_rest)]
@@ -133,7 +141,7 @@ def block_training(args):
         server.aggregate_parameters()
 
         block_models=[]
-        block_models.append(server.global_model)
+        block_models.append(copy.deepcopy(server.global_model))
     elif args.strategy == 2:
         for j in range(len(all_clients)):
             if j < len(all_clients) - 1:
@@ -151,60 +159,63 @@ def block_training(args):
                 server.aggregate_parameters()
 
             block_models = []
-            block_models.append(server.global_model)
+            block_models.append(copy.deepcopy(server.global_model))
 
     print("start ___________________  training")
     #other rounds
-    for i in range(args.global_rounds-1):
-    #C_SBIBD
+    for i in range(args.global_rounds):
+        #C_SBIBD
         s_t = time.time()
         for j in range(len(blocks)):
-            for k in range(len(blocks[j])):
-                server.selected_clients = [clients[s] for s in server.select_clients(next=blocks[j][k])]
+            if blocks[j] != []:
+                for k in range(len(blocks[j])):
+                    server.selected_clients = [clients[s] for s in server.select_clients(next=blocks[j][k])]
+                    for client in server.selected_clients:
+                        client.train_1(block_models)
+                    server.receive_models()
+                    server.aggregate_parameters()
+
+                    if k + 1 < len(blocks[j]):
+                        server.selected_clients = [clients[s] for s in server.select_clients(next=blocks[j][k + 1])]
+                        server.clients = server.selected_clients
+                    else:
+                        pass
+                    server.send_models()
+                block_models.append(copy.deepcopy(server.global_model))
+
+        #C_rest
+        if blocks[j] != []:
+            if args.strategy == 1:
+                server.selected_clients = [clients[s] for s in server.select_clients(next=c_rest)]
+                server.clients = server.selected_clients
+
                 for client in server.selected_clients:
                     client.train_1(block_models)
                 server.receive_models()
                 server.aggregate_parameters()
-
-                if k + 1 < len(blocks[j]):
-                    server.selected_clients = [clients[s] for s in server.select_clients(next=blocks[j][k + 1])]
-                    server.clients = server.selected_clients
-                else:
-                    pass
                 server.send_models()
-            block_models.append(server.global_model)
-
-    #C_rest
-        if args.strategy == 1:
-            server.selected_clients = [clients[s] for s in server.select_clients(next=c_rest)]
-            server.clients = server.selected_clients
-            for client in server.selected_clients:
-                client.train_1(block_models)
-            server.receive_models()
-            server.aggregate_parameters()
-            server.send_models()
-
-            block_models = []
-            block_models.append(server.global_model)
-
-        elif args.strategy == 2:
-            for j in range(len(all_clients)):
-                if j < len(all_clients) - 1:
-                    server.selected_clients = [all_clients[j]]
-                    server.clients = [all_clients[j+1]]
-                    all_clients[j].train_1(block_models)
-                    server.receive_models()
-                    server.aggregate_parameters()
-                    server.send_models()
-
-                else:
-                    server.selected_clients = [all_clients[j]]
-                    all_clients[j].train_1(block_models)
-                    server.receive_models()
-                    server.aggregate_parameters()
 
                 block_models = []
-                block_models.append(server.global_model)
+                block_models.append(copy.deepcopy(server.global_model))
+
+            elif args.strategy == 2:
+                for j in range(len(all_clients)):
+                    if j < len(all_clients) - 1:
+                        server.selected_clients = [all_clients[j]]
+                        server.clients = [all_clients[j+1]]
+                        all_clients[j].train_1(block_models)
+                        server.receive_models()
+                        server.aggregate_parameters()
+                        server.send_models()
+
+                    else:
+                        server.selected_clients = [all_clients[j]]
+                        all_clients[j].train_1(block_models)
+                        server.receive_models()
+                        server.aggregate_parameters()
+
+                    block_models = []
+                    block_models.append(copy.deepcopy(server.global_model))
 
         time_list.append(time.time() - s_t)
         print(f"\n-------------Round number: {i+1}-------------")
@@ -296,4 +307,3 @@ if __name__ == "__main__":
         print(f"Using {torch.cuda.device_count()} GPUs")
 
     block_training(args)
-
