@@ -39,8 +39,8 @@ def pre_train(args):
 
     #create the clients
     for i in idx_clients:
-        train_data = read_client_data(args.dataset, i, is_train=True)
-        test_data = read_client_data(args.dataset, i, is_train=False)
+        train_data = read_client_data(args.dataset, i, args, is_train=True)
+        test_data = read_client_data(args.dataset, i, args, is_train=False)
         client = clientAVG(args, id=i, train_samples=len(train_data), test_samples=len(test_data))
         clients.append(client)
 
@@ -157,5 +157,6 @@ if __name__ == "__main__" :
     for arg in vars(args):
         print(arg, '=',getattr(args, arg))
     print("=" * 50)
+
 
     pre_train(args)
