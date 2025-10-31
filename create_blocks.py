@@ -28,7 +28,10 @@ def create(args):
     #create blocks for all SBIBD
     print(data["C_SBIBD"])
     for i in range(len(data["C_SBIBD"])):
-        blocks.append(create_blocks(data["C_SBIBD"][i], data["a"][i], data["k"][i]))
+        if data["C_SBIBD"][i] != []:
+            blocks.append(create_blocks(data["C_SBIBD"][i], data["a"][i], data["k"][i]))
+        else:
+            blocks.append([])
 
     print(f"The blocks are \n{blocks}")
 
@@ -121,3 +124,4 @@ if __name__ == "__main__":
             args.device = "cpu"
 
         create(args)
+
